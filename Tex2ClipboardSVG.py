@@ -2,26 +2,47 @@
 # If anything happens, github.com/SolarBakha is to be blamed, even though the code is my creation
 # go blame her, she introduced the eldritch horror that are classes into this program,
 # even though they were the most unnecessary thing in the universe after what my ex did to me
+import io
 import multiprocessing
 import os
-import subprocess
-
-from PyQt6.QtSvgWidgets import QGraphicsSvgItem
-from PyQt6.QtWidgets import QWidget, QApplication, QMainWindow, QVBoxLayout, QLineEdit, QPushButton
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtCore import QMimeData, QByteArray, Qt, QObject
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QLabel
-import tempfile
-import sys
-import io
-import matplotlib.pyplot as plot
-import latextools
-import drawsvg as draw
 import re
+import sys
+import tempfile
+from io import StringIO
+import xml.etree.ElementTree as ET
+
+import matplotlib.pyplot as plot
+from PyQt6.QtCore import QByteArray, Qt, QObject
+from PyQt6.QtGui import QPainter, QImage, QBitmap, QRegion
+from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtSvgWidgets import QGraphicsSvgItem
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QLabel
+from PyQt6.QtWidgets import QWidget, QApplication, QMainWindow, QVBoxLayout, QLineEdit
 
 # Declare math text usage for matplotlib
 plot.rc('mathtext', fontset='cm')
-#plot.rc('mathtext', fontset='stix')
+# plot.rc('text', usetex=True)
+# plot.rc('text.latex', preamble=r'\usepackage{steinmetz}')
+plot.rc('text.latex', preamble=r'\usepackage{amsmath}')
+# plot.rc('mathtext', fontset='stix')
+
+
+def_color = "#DDDDDD"
+# def_color="#000000"
+
+repl = {
+    r"\\Var": r"\\text{Var}",
+    r"\\Log": r"\\text{Log}\,",
+    r"\\bLog": r"\\mathcal{L}\text{og}\,",
+    r"\\Arg": r"\\text{Arg}\,",
+    r"\\dell": r"\\partial",
+    r"\\Re ": r"\\text{Re}\,",
+    r"\\Res{([^}]*)}": r"\\underset{\1}{\\text{Res}}",
+    r"\\argvar{([^}]*)}": r"\\underset{\1}{\\text{argvar}}",
+    r"\\epsilon": r"\\varepsilon",
+    r"\\hat": r"\\widehat",
+    r"\\matrix{([^}]*)}": r"\\begin{bmatrix}\1\\end{bmatrix}"
+}
 
 
 # Initialize properties class
@@ -33,7 +54,7 @@ class Properties(QObject):
 
         # Declare defaults
         self.DPI = 300
-        self.FontSize = 12
+        self.FontSize = 18
         self.copyFlag = 0
         self.NOCOPY = False
         self.equation = '(x + y)^2 = x^2 + y^2'
@@ -127,34 +148,32 @@ class MainWindow(QMainWindow):
             # Retrieve Equation
             self.properties.equation = self.eq_box.text()
         # Strip spaces after it's done because matplotlib will bitch about a single space ._.
+        self.preprocess()
         self.properties.equation = self.properties.equation.rstrip()
+        print(self.properties.equation)
         # If it's empty, render empty space to avoid errors
         changed = True
         if self.properties.equation == '':
             self.properties.equation = r'\text{ }'
             changed = False
         try:
-            # latex_eq = latextools.render_snippet(fr'${self.properties.equation}$')  # ,
-            #                                     commands=[
-            #                                         latextools.command.LatexCommand("color",
-            #                                                                         "white",
-            #                                                                         packages=(
-            #                                                                             latextools.LatexPackage(
-            #                                                                                 "xcolor", ("svgnames",)),
-            #                                                                         ))
-            #                                     ])
-            # svg_eq = latex_eq.as_svg()
-            # self.properties.svg = svg_eq
-            # self.properties.byteIO.write(svg_eq.content.encode('utf-8'))
-            
             # Render the equation using matplotlib plot labelling
-            text = img.text(0, 1, fr'${self.properties.equation}$', fontsize=int(self.properties.FontSize),
-                            color="#DDDDDD",
-                            parse_math=True)
+            usetex = r"\begin" in self.properties.equation
+            text = img.text(0, 1,
+                            fr'${self.properties.equation}$',
+                            fontsize=int(self.properties.FontSize),
+                            color=def_color,
+                            parse_math=True,
+                            usetex=usetex)
             # text.ha = "center"
             # Create SVG of plot, save as byte stream instead of file
-            img.savefig(self.properties.byteIO, transparent=True, dpi=int(self.properties.DPI), format='svg',
-                        bbox_inches='tight', pad_inches=0, bbox_extra_artists=[text])
+            img.savefig(self.properties.byteIO,
+                        transparent=True,
+                        dpi=int(self.properties.DPI),
+                        format='svg',
+                        pad_inches=1,
+                        bbox_extra_artists=[text],
+                        bbox_inches='tight')
             self.changed = changed
             return 'SUCCESS'
         except ValueError as e:
@@ -170,6 +189,15 @@ class MainWindow(QMainWindow):
             plot.close(img)
             if self.properties.equation == r'\text{ }':
                 return 'EMPTY'
+
+    def preprocess(self):
+        eq = self.properties.equation
+        # print("Before", eq)
+        for k, i in repl.items():
+            eq = re.sub(k, i, eq)
+        # print("After:", eq)
+        self.properties.equation = eq
+        pass
 
     # Retrieve SVG byte array and send to clipboard with MIME data
     def createSVG(self, arg):
@@ -188,90 +216,121 @@ class MainWindow(QMainWindow):
         if arg == 'FAILED':
             return
 
-        # Write the SVG data to a temporary file
-        with tempfile.NamedTemporaryFile(dir=tempdir, delete=False, delete_on_close=False, suffix=".svg") as temp:
-            # Write the byte array to the temporary file
+        decoded = bytes(byte_array).decode("utf-8")
 
-            # svg = self.properties.svg
-            # d = draw.Drawing(svg.width, svg.height)  # , )
-            # d.draw(svg, x=0, y=0)
-            # d.append(
-            #     draw.Text(fr"${self.properties.equation}$", self.properties.FontSize, 0, svg.height // 2, fill="grey"))
-            # latex = latextools.render_svg(d)
-            # svg = latex.as_svg()
-            # temp.write(svg.content.encode('utf-8'))
-            # d.save_svg(temp.name)
-            decoded = bytes(byte_array).decode("utf-8")
+        # re_width = r"(^<svg.*width=\")(.*?)(\".*?$)"
+        # re_height = r"(^<svg.*height=\")(.*?)(\".*?$)"
+        # re_viewbox = r"(^<svg.*viewBox=\")(.*?)(\".*?$)"
 
-            # print(str)
+        # width_match = re.search(re_width, decoded, flags=re.M)
+        # height_match = re.search(re_height, decoded, flags=re.M)
+        # viewbox_match = re.search(re_viewbox, decoded, flags=re.M)
+        # print(width, height, viewbox)
 
-            re_width = r"(^<svg.*width=\")(.*?)(\".*?$)"
-            re_height = r"(^<svg.*height=\")(.*?)(\".*?$)"
-            re_viewbox = r"(^<svg.*viewBox=\")(.*?)(\".*?$)"
+        #def vb_repl(m):
+        #    viewbox = m.group(2)
+        #    viewbox_arr = [float(x) for x in viewbox.split(" ")]
+        #    # print("Before", viewbox_arr)
+        #    fixing_letters = r"qypfjg\(\)\[\]\|_"
+        #    extra_func = r"|".join([x.replace("\\", "\\\\") for x in repl.values()])
+        #    # print(extra_func)
+        #    print("VB Before: ", viewbox_arr)
+#
+        #    if viewbox_arr[3] < self.properties.FontSize * (13 / 10):
+        #        print("Viewbox correction")
+        #        viewbox_arr[0] -= 0
+        #        viewbox_arr[1] -= self.properties.FontSize * (1 / 5)
+        #        viewbox_arr[2] += self.properties.FontSize * (1 / 10)
+        #        viewbox_arr[3] += self.properties.FontSize * (2 / 5)
+#
+        #    elif viewbox_arr[3] < self.properties.FontSize * (3 / 2) and (
+        #            not re.search(r"(((?<!overset{))(?<!\\)(^|\s)\w*[" + fixing_letters + r"]\w*)",
+        #                          self.properties.equation)) and not r"\begin" in self.properties.equation:
+        #        print("Viewbox recorrection")
+        #        if not re.search(r"(\\frac{.*}{.*})|(\\geq)|(\\leq)|(\\\{)|(\\\})|(\\mu)|(\\underset{.*}{.*})",
+        #                         self.properties.equation):
+        #            print("Here")
+        #            viewbox_arr[1] -= self.properties.FontSize * (1 / 5)
+#
+        #    print("VB After: ", viewbox_arr)
+        #    # Fixa t.ex \dot \hat X om vissa bokstäver inte finns i texten
+        #    # elif (re.search(r"^(?!.*[" + fixing_letters + r"])(\\\w+ ){2,}[A-Z]", self.properties.equation)):
+        #    #    pass
+        #    #    print("Here")
+        #    #    viewbox_arr[1] -= 2.5
+        #    # Fixa \overset om vissa bokstäver inte finns i texten
+        #    # elif (re.search(r"^(?!.*(?<!\\)\b[" + fixing_letters + r"](?![^{}]*\}(?=\s*\{)|(?<=\\)\{)).*$", self.properties.equation)):
+        #    #    pass
+        #    #    print("Here")
+        #    #    viewbox_arr[1] -= 2.5
+        #    # print("#############################\n", self.properties.equation, "\n", re.search("(?!.*[ypfjg])\\\\dot \\\\\\w+ [A-Z]", self.properties.equation))
+        #    # print(self.properties.equation)
+#
+        #    # print("After:", viewbox_arr)
+        #    ret_val = f"{m.group(1)}{" ".join(f"{x}" for x in viewbox_arr)}{m.group(3)}"
+        #    # print(ret_val)
+        #    return ret_val
+        #    pass
+#
+        #def h_repl(m):
+        #    height = m.group(2)
+        #    ret_val = f"{m.group(1)}{height}{m.group(3)}"
+        #    print("h_repl", ret_val)
+        #    return ret_val
+        #    pass
+#
+        #def w_repl(m):
+        #    width = m.group(2)
+        #    ret_val = f"{m.group(1)}{width}{m.group(3)}"
+        #    print("w_repl", ret_val)
+        #    return ret_val
+        #    pass
 
-            # width_match = re.search(re_width, decoded, flags=re.M)
-            # height_match = re.search(re_height, decoded, flags=re.M)
-            # viewbox_match = re.search(re_viewbox, decoded, flags=re.M)
-            # print(width, height, viewbox)
+        # decoded = re.sub(re_viewbox, vb_repl, decoded, flags=re.M)
+        # decoded = re.sub(re_height, h_repl, decoded, flags=re.M)
+        # decoded = re.sub(re_width, w_repl, decoded, flags=re.M)
+        # print(decoded)
 
-            def vb_repl(m):
-                viewbox = m.group(2)
-                viewbox_arr = [float(x) for x in viewbox.split(" ")]
-                print(viewbox)
-                if viewbox_arr[3] < self.properties.FontSize + 1:
-                    print("Here2")
-                    viewbox_arr[0] -= 0
-                    viewbox_arr[1] -= 2.25
-                    viewbox_arr[2] += 1
-                    viewbox_arr[3] += 2.25
-                    if("\\dot \\" in self.properties.equation):
-                        pass
-                        #viewbox_arr[1] -= 1
-                elif (re.search("(?!.* [ypfjg])(\\\\\\w+ ){2,}[A-Z]", self.properties.equation)):
-                    pass
-                    print("Here")
-                    viewbox_arr[1] -= 2.5
-                print("#############################\n", self.properties.equation, "\n", re.search("(?!.*[ypfjg])\\\\dot \\\\\\w+ [A-Z]", self.properties.equation))
-                print(self.properties.equation)
-                        
-                print(viewbox)
-                ret_val = f"{m.group(1)}{" ".join(f"{x}" for x in viewbox_arr)}{m.group(3)}"
-                print(ret_val)
-                return ret_val
-                pass
+        self.svgData = decoded.encode("utf-8")
+        svgRenderer = QSvgRenderer(QByteArray(self.svgData))
 
-            def h_repl(m):
-                height = m.group(2)
-                ret_val = f"{m.group(1)}{height}{m.group(3)}"
-                print(ret_val)
-                return ret_val
-                pass
+        size = svgRenderer.defaultSize()
 
-            def w_repl(m):
-                width = m.group(2)
-                pass
+        img = QImage(size.width(), size.height(), QImage.Format.Format_ARGB32)
+        img.fill(0)
 
-            decoded = re.sub(re_viewbox, vb_repl, decoded, flags=re.M)
-            # decoded = re.sub(re_height, h_repl, decoded, flags=re.M)
-            # decoded = re.sub(re_width, w_repl, decoded, flags=re.M)
-            # print(decoded)
-            temp.write(decoded.encode("utf-8"))
-            temp.close()
-            # Get the path of the temporary file
-            self.temp_path = temp.name
+        p = QPainter(img)
+        svgRenderer.render(p)
+        p.end()
+        mask = img.createAlphaMask()
+        region = QRegion(QBitmap.fromImage(mask))
+        bbox = region.boundingRect()
 
-            # Remove previous SVG from view
-            self.scene.clear()
-            # Load the temporary file created earlier
-            # into the QGraphicsSvgItem and add it to the viewport
-            svgItem = QGraphicsSvgItem(self.temp_path)
-            # Add new SVG
-            self.scene.addItem(svgItem)
-            # make it fit, duh
-            self.view.fitInView(svgItem, Qt.AspectRatioMode.KeepAspectRatio)
-            # Flush IO stream for next SVG byte array
-            self.properties.byteIO.seek(0)
-            self.properties.byteIO.truncate()
+        svg = re.sub(
+            r'viewBox="[^"]+"',
+            f'viewBox="{bbox.x()} {bbox.y()} {bbox.width() + 2} {bbox.height() + 2}"',
+            decoded,
+            count=1
+        )
+
+        self.svgData = svg.encode("utf-8")
+
+        # Remove previous SVG from view
+        self.scene.clear()
+        # Load the temporary file created earlier
+        # into the QGraphicsSvgItem and add it to the viewport
+        svgRenderer = QSvgRenderer(QByteArray(self.svgData))
+        svgItem = QGraphicsSvgItem()
+        svgItem.setSharedRenderer(svgRenderer)
+
+        # Add new SVG
+        self.scene.addItem(svgItem)
+
+        # make it fit, duh
+        self.view.fitInView(svgItem, Qt.AspectRatioMode.KeepAspectRatio)
+        # Flush IO stream for next SVG byte array
+        self.properties.byteIO.seek(0)
+        self.properties.byteIO.truncate()
 
     # Tick Rendering Per Keystroke
     def renderticker(self):
@@ -302,10 +361,15 @@ class MainWindow(QMainWindow):
         self.DPIbox.textChanged.connect(self.updateDPIValue)
         self.DPIbox.textChanged.connect(self.renderticker)
 
+        # Create Path field
+        self.PathBox = QLineEdit(self)
+        # Set placeholder text
+        self.PathBox.setPlaceholderText(f'')
+
         # Create Font Size input field
         self.FontSizeBox = QLineEdit(self)
         # Set placeholder text
-        self.FontSizeBox.setPlaceholderText(f'Font size - Defaults to 12 pt')
+        self.FontSizeBox.setPlaceholderText(f'Font size - Defaults to 18 pt')
         # Connect text change events to ticker and updates
         self.FontSizeBox.textChanged.connect(self.updateFontSizeValue)
         self.FontSizeBox.textChanged.connect(self.renderticker)
@@ -333,6 +397,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.eq_box)
         layout.addWidget(self.DPIbox)
         layout.addWidget(self.FontSizeBox)
+        layout.addWidget(self.PathBox)
         layout.addWidget(self.DPILabel)
         layout.addWidget(self.FontSizeLabel)
         layout.addWidget(self.view)
@@ -346,8 +411,17 @@ class MainWindow(QMainWindow):
             print(self.changed)
             if (self.changed):
                 self.changed = False
-                multiprocessing.Process(target=os.system,
-                                        args=[f"powershell Set-Clipboard -LiteralPath {self.temp_path}"]).start()
+
+                # Write the SVG data to a temporary file
+                with tempfile.NamedTemporaryFile(dir=tempdir, delete=False, delete_on_close=False,
+                                                 suffix=".svg") as temp:
+                    # Write the byte array to the temporary file
+                    temp.write(self.svgData)
+                    temp.close()
+                    # Get the path of the temporary file
+                    self.PathBox.setText(temp.name)
+                    multiprocessing.Process(target=os.system,
+                                            args=[f"powershell Set-Clipboard -LiteralPath {temp.name}"]).start()
 
                 with open("log.txt", "r+") as f:
                     for line in f:
