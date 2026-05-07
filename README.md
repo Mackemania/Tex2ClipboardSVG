@@ -15,6 +15,6 @@ Download the script, run and type your equation. When you're done typing, it wil
 ```
 
 # Support the Creator
-Hi! If this tool has proved useful to you and you would like to support me, feel free to head on to https://ko-fi.com/eljokun
+Hi! If this tool has proved useful to you and you would like to support the original autor, feel free to head on to https://ko-fi.com/eljokun
 
 Thank you <3

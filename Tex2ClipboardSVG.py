@@ -221,9 +221,10 @@ class MainWindow(QMainWindow):
         self.svgData = decoded.encode("utf-8")
         svgRenderer = QSvgRenderer(QByteArray(self.svgData))
 
-        size = svgRenderer.defaultSize()
+        scale = 10
+        size = svgRenderer.defaultSize() * scale
 
-        img = QImage(size.width(), size.height(), QImage.Format.Format_ARGB32)
+        img = QImage(size, QImage.Format.Format_ARGB32)
         img.fill(0)
 
         p = QPainter(img)
@@ -231,12 +232,37 @@ class MainWindow(QMainWindow):
         p.end()
         mask = img.createAlphaMask()
         region = QRegion(QBitmap.fromImage(mask))
-        bbox = region.boundingRect()
+        s_bbox = region.boundingRect()
+        bbox = {
+            "x": s_bbox.x() / scale,
+            "y": s_bbox.y() / scale,
+            "width": s_bbox.width() / scale,
+            "height": s_bbox.height() / scale
+        }
+
+        ratio = bbox["width"] / bbox["height"]
+
+        target_h = 25
+        target_w = target_h * ratio
 
         svg = re.sub(
             r'viewBox="[^"]+"',
-            f'viewBox="{bbox.x()} {bbox.y()} {bbox.width() + 2} {bbox.height() + 2}"',
+            f'viewBox="{bbox["x"] - 1} {bbox["y"] - 1} {bbox["width"] + 2} {bbox["height"] + 2}"',
             decoded,
+            count=1
+        )
+
+        svg = re.sub(
+            r'height\s*=\s*["\'][^"\']*["\']',
+            f'height="{target_h}px"',
+            svg,
+            count=1
+        )
+
+        svg = re.sub(
+            r'width\s*=\s*["\'][^"\']*["\']',
+            f'width="{target_w}px"',
+            svg,
             count=1
         )
 
