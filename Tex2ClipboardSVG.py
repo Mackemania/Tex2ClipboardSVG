@@ -41,7 +41,7 @@ repl = {
     r"\\argvar{([^}]*)}": r"\\underset{\1}{\\text{argvar}}",
     r"\\epsilon": r"\\varepsilon",
     r"\\hat": r"\\widehat",
-    r"\\matrix{([^}]*)}": r"\\begin{bmatrix}\1\\end{bmatrix}"
+    r"\\matrix§([^§]*)§": r"\\begin{bmatrix}\1\\end{bmatrix}"
 }
 
 
@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
             "height": s_bbox.height() / scale
         }
 
-        ratio = bbox["width"] / bbox["height"]
+        ratio = bbox["width"] / (bbox["height"] if bbox["height"] != 0 else 1)
 
         target_h = 25
         target_w = target_h * ratio
